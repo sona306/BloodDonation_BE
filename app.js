@@ -16,12 +16,37 @@ mongoose.connect("mongodb+srv://sonasabu:sonavi306@cluster0.ejzjjq6.mongodb.net/
 app.post("/adminSignUp",(req,res)=>{
     let input = req.body
     let hashedPassword = bcrypt.hashSync(req.body.password,10)
-    console.log(hashedPassword)
+    //console.log(hashedPassword)
     req.body.password = hashedPassword
-    console.log(input)
+    //console.log(input)
     let result = new loginModel(input)
     result.save()
     res.json({"status":"success"})
+})
+
+app.post("/adminSignIn",(req,res)=>{
+    let input = req.body
+    let result = loginModel.find({username:input.username}).then(
+        (response)=>{
+            if (response.length>0) {
+                const validator=bcrypt.compareSync(input.password,response[0].password)
+                if (validator) {
+                    jwt.sign({email:input.username},"blood-donation",{expiresIn:"2d"},
+                        (error,token)=>{
+                            if (error) {
+                                res.json({"status" : "token creation failed"})
+                            } else {
+                                res.json({"status" : "success","token":token})
+                            }
+                        })
+                } else {
+                    res.json({"status" : "incorect password"})
+                }
+            } else {
+                res.json({"status" : "username doesnt exist"})
+            }
+        }
+    )
 })
 
 app.listen(8080,()=>{
