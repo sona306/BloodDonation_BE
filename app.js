@@ -18,10 +18,18 @@ app.post("/adminSignUp",(req,res)=>{
     let hashedPassword = bcrypt.hashSync(req.body.password,10)
     //console.log(hashedPassword)
     req.body.password = hashedPassword
-    //console.log(input)
-    let result = new loginModel(input)
-    result.save()
-    res.json({"status":"success"})
+
+    loginModel.find({ email: req.body.email }).then(
+        (items) => {
+            if (items.length > 0) {
+                res.json({ "status": "Email id already exits" })
+            } else {
+                let result = new loginModel(input)
+                result.save()
+                res.json({ "status": "success" })
+            }
+        }
+    )
 })
 
 app.post("/adminSignIn",(req,res)=>{
