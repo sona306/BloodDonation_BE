@@ -6,6 +6,8 @@ const jwt = require("jsonwebtoken")
 const loginModel = require("./Models/Admin")
 const donarloginModel = require("./Models/Donar")
 const consumerloginModel = require("./Models/Cosumer")
+const hospitalloginModel = require("./Models/Hospital")
+
 
 
 let app = express()
@@ -86,7 +88,6 @@ app.post("/donarSignUp",(req,res)=>{
 })
 
 //DONAR SIGN IN
-
 app.post("/donarSignIn",(req,res)=>{
     let input = req.body
     let result = donarloginModel.find({username:input.username}).then(
@@ -135,10 +136,57 @@ app.post("/consumerSignUp",(req,res)=>{
 })
 
 //CONSUMER SIGN IN
-
 app.post("/consumerSignIn",(req,res)=>{
     let input = req.body
     let result = consumerloginModel.find({username:input.username}).then(
+        (response)=>{
+            if (response.length>0) {
+                const validator=bcrypt.compareSync(input.password,response[0].password)
+                if (validator) {
+                    jwt.sign({email:input.username},"blood-donation",{expiresIn:"2d"},
+                        (error,token)=>{
+                            if (error) {
+                                res.json({"status" : "token creation failed"})
+                            } else {
+                                res.json({"status" : "success","token":token})
+                            }
+                        })
+                } else {
+                    res.json({"status" : "incorect password"})
+                }
+            } else {
+                res.json({"status" : "username doesnt exist"})
+            }
+        }
+    )
+})
+
+//CONSUMER SIGN UP
+app.post("/hospitalSignUp",(req,res)=>{
+    let input = req.body
+    let hashedPassword = bcrypt.hashSync(req.body.password,10)
+    //console.log(hashedPassword)
+    let hashedConfirm = bcrypt.hashSync(req.body.confirm,10)
+    req.body.password = hashedPassword
+    req.body.confirm = hashedConfirm
+
+    hospitalloginModel.find({ email: req.body.email }).then(
+        (items) => {
+            if (items.length > 0) {
+                res.json({ "status": "Email id already exits" })
+            } else {
+                let result = new hospitalloginModel(input)
+                result.save()
+                res.json({ "status": "success" })
+            }
+        }
+    )
+})
+
+//HOSPITAL SIGN IN
+app.post("/hospitalSignIn",(req,res)=>{
+    let input = req.body
+    let result = hospitalloginModel.find({username:input.username}).then(
         (response)=>{
             if (response.length>0) {
                 const validator=bcrypt.compareSync(input.password,response[0].password)

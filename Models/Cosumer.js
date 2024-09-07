@@ -12,7 +12,7 @@ const consumerLoginSchema = mongoose.Schema(
         homeaddress:{type:String,require:true},
         location:{type:String,require:true},
         medicalhistory:{type:String,require:true},
-        lastdonationdate:{type:String,require:true},
+        lastdonationrecieveddate:{type:String,require:true},
         hospitalname:{type:String,require:true},
         emergencycontactnumber:{type:String,require:true},
         urgencylevel:{type:String,require:true},
