@@ -17,7 +17,9 @@ app.post("/adminSignUp",(req,res)=>{
     let input = req.body
     let hashedPassword = bcrypt.hashSync(req.body.password,10)
     //console.log(hashedPassword)
+    let hashedConfirm = bcrypt.hashSync(req.body.confirm,10)
     req.body.password = hashedPassword
+    req.body.confirm = hashedConfirm
 
     loginModel.find({ email: req.body.email }).then(
         (items) => {
