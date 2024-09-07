@@ -1,6 +1,6 @@
 const mongoose = require("mongoose")
 
-const donarLoginSchema = mongoose.Schema(
+const consumerLoginSchema = mongoose.Schema(
     {
         username:{type:String,require:true},
         fullname:{type:String,require:true},
@@ -15,10 +15,11 @@ const donarLoginSchema = mongoose.Schema(
         lastdonationdate:{type:String,require:true},
         hospitalname:{type:String,require:true},
         emergencycontactnumber:{type:String,require:true},
+        urgencylevel:{type:String,require:true},
         password:{type:String,require:true},
         confirm:{type:String,require:true}    
     }
 )
 
-const donarloginModel = mongoose.model("donarlogin",donarLoginSchema)
-module.exports=donarloginModel
+const consumerloginModel = mongoose.model("consumerlogin",consumerLoginSchema)
+module.exports=consumerloginModel
