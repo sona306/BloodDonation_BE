@@ -86,7 +86,6 @@ app.post("/donarSignUp",(req,res)=>{
 })
 
 //DONAR SIGN IN
-
 app.post("/donarSignIn",(req,res)=>{
     let input = req.body
     let result = donarloginModel.find({username:input.username}).then(
@@ -135,7 +134,6 @@ app.post("/consumerSignUp",(req,res)=>{
 })
 
 //CONSUMER SIGN IN
-
 app.post("/consumerSignIn",(req,res)=>{
     let input = req.body
     let result = consumerloginModel.find({username:input.username}).then(
