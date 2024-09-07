@@ -10,6 +10,7 @@ const donarLoginSchema = mongoose.Schema(
         phonenumber:{type:String,require:true},
         email:{type:String,require:true},
         homeaddress:{type:String,require:true},
+        location:{type:String,require:true},
         medicalhistory:{type:String,require:true},
         lastdonationdate:{type:String,require:true},
         hospitalname:{type:String,require:true},
