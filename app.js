@@ -8,8 +8,6 @@ const donarloginModel = require("./Models/Donar")
 const consumerloginModel = require("./Models/Cosumer")
 const hospitalloginModel = require("./Models/Hospital")
 
-
-
 let app = express()
 
 app.use(express.json())
