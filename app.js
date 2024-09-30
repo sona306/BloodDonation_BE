@@ -7,6 +7,7 @@ const loginModel = require("./Models/Admin")
 const donarloginModel = require("./Models/Donar")
 const consumerloginModel = require("./Models/Cosumer")
 const hospitalloginModel = require("./Models/Hospital")
+const donationRequestModel = require("./Models/DonationRequest")
 
 let app = express()
 
@@ -206,6 +207,51 @@ app.post("/hospitalSignIn",(req,res)=>{
         }
     )
 })
+
+
+// DONOR SEND REQUEST FOR BLOOD DONATION
+app.post("/donar/requestBloodDonation", (req, res) => {
+    let input = req.body;
+
+    // Create a new donation request
+    let donationRequest = new donationRequestModel({
+        donorId: input.donorId, // assuming the donor is sending their ID
+        requestedDate: input.requestedDate
+    });
+
+    donationRequest.save()
+        .then(() => {
+            res.json({ "status": "success", "message": "Request submitted successfully." });
+        })
+        .catch(err => {
+            res.json({ "status": "failure", "message": err.message });
+        });
+});
+
+// ADMIN APPROVES OR REJECTS A DONATION REQUEST
+app.post("/admin/approveDonationRequest", (req, res) => {
+    let input = req.body;
+
+    // Find the donation request by ID and update its status
+    donationRequestModel.findById(input.requestId)
+        .then((request) => {
+            if (!request) {
+                return res.json({ "status": "failure", "message": "Request not found." });
+            }
+
+            request.status = input.status; // 'Approved' or 'Rejected'
+            request.adminResponseDate = new Date();
+
+            return request.save();
+        })
+        .then(() => {
+            res.json({ "status": "success", "message": "Request status updated." });
+        })
+        .catch(err => {
+            res.json({ "status": "failure", "message": err.message });
+        });
+});
+
 
 app.listen(8080,()=>{
     console.log("server started...")
