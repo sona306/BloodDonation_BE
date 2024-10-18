@@ -1,9 +1,12 @@
 const mongoose = require("mongoose");
 
 const donationRequestSchema = new mongoose.Schema({
-    donorId: {
+    userId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "Donar",
+        ref: "Donar"
+    },
+    fullname:{
+        type: String,
         required: true
     },
     requestedDate: {
@@ -15,9 +18,54 @@ const donationRequestSchema = new mongoose.Schema({
         enum: ['Pending', 'Approved', 'Rejected'],
         default: 'Pending'
     },
-    adminResponseDate: {
-        type: Date
+    location: {
+        type: String,
+        required: true
+    },
+    BloodGroup: {
+        type: String,
+        required: true
+    },
+    Amount: {
+        type: String,
+        required: true
+    },
+    confirmavalibility: {
+        type: String,
+        required: true
+    },
+    donationHistory: {
+        type: Boolean,
+        required: true
+    },
+    date: {
+        type: Date,
+        validate: {
+            validator: function(v) {
+                return this.donationHistory ? v != null : true;
+            },
+            message: "Date is required if donation history is true."
+        }
+    },
+    hospitalName: {
+        type: String,
+        validate: {
+            validator: function(v) {
+                return this.donationHistory ? v != null : true;
+            },
+            message: "Hospital name is required if donation history is true."
+        }
+    },
+    quality: {
+        type: String,
+        validate: {
+            validator: function(v) {
+                return this.donationHistory ? v != null : true;
+            },
+            message: "Quality is required if donation history is true."
+        }
     }
 });
 
-module.exports = mongoose.model("DonationRequest", donationRequestSchema);
+const donationRequestModel = mongoose.model("donationreq", donationRequestSchema);
+module.exports = donationRequestModel;
