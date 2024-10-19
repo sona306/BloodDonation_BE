@@ -27,7 +27,7 @@ const donationRequestSchema = new mongoose.Schema({
         required: true
     },
     Amount: {
-        type: String,
+        type: Number,
         required: true
     },
     confirmavalibility: {

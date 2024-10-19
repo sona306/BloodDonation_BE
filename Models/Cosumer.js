@@ -15,7 +15,6 @@ const consumerLoginSchema = mongoose.Schema(
         lastdonationrecieveddate:{type:String,require:true},
         hospitalname:{type:String,require:true},
         emergencycontactnumber:{type:String,require:true},
-        urgencylevel:{type:String,require:true},
         password:{type:String,require:true},
         confirm:{type:String,require:true}    
     }
