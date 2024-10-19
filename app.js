@@ -8,7 +8,7 @@ const donarloginModel = require("./Models/Donar")
 const consumerloginModel = require("./Models/Cosumer")
 const hospitalloginModel = require("./Models/Hospital")
 const donationRequestModel = require("./Models/DonationRequest")
-
+const bloodRequestModel = require("./Models/BloodRequest")
 let app = express()
 
 app.use(express.json())
@@ -324,6 +324,152 @@ app.get("/admin/getPendingRequests", async (req, res) => {
     }
 });
 
+// API to search for donors based on blood type for CONSUMER
+app.post('/consumer/searchDonor', async (req, res) => {
+    const { bloodtype } = req.body;  // Get blood type from the request body
+
+    if (!bloodtype) {
+        return res.status(400).json({ 
+            status: "failure", 
+            message: "Blood type is required." 
+        });
+    }
+
+    try {
+        // Fetch donors with the matching blood type, projecting only the specified fields
+        const donors = await donarloginModel.find(
+            { bloodtype: bloodtype }, 
+            {
+                username: 1,
+                fullname: 1,
+                dateofbirth: 1,
+                gender: 1,
+                bloodtype: 1,
+                phonenumber: 1,
+                email: 1,
+                homeaddress: 1,
+                location: 1,
+                medicalhistory: 1,
+                lastdonationdate: 1,
+                hospitalname: 1,
+                emergencycontactnumber: 1,
+                _id: 0  // Optional: Exclude the _id field if not needed
+            }
+        );
+
+        if (donors.length > 0) {
+            res.status(200).json({
+                status: "success",
+                donors: donors
+            });
+        } else {
+            res.status(404).json({
+                status: "failure",
+                message: `No donors found for blood type: ${bloodtype}`
+            });
+        }
+    } catch (error) {
+        console.error("Error fetching donors:", error.message);
+        res.status(500).json({
+            status: "failure",
+            message: "Error fetching donors.",
+            error: error.message
+        });
+    }
+});
+
+// API to post a blood request from consumer side
+app.post('/consumer/requestBlood', async (req, res) => {
+    const {fullname, requestedDate, urgency, location, bloodtype, Amount } = req.body; // Extract fields from the request body
+
+    // Validate input
+    if ( !fullname || !requestedDate || !urgency || !location || !bloodtype || !Amount) {
+        return res.status(400).json({ 
+            status: "failure", 
+            message: "All fields are required." 
+        });
+    }
+
+    try {
+        // Create a new blood request
+        const newRequest = await bloodRequestModel.create({
+            fullname,
+            requestedDate,
+            urgency,
+            location,
+            bloodtype,
+            Amount
+        });
+
+        // Fetch donors with the matching blood type (assuming BloodGroup matches blood type)
+        const matchingDonors = await donarloginModel.find({ bloodtype: bloodtype });
+
+        if (matchingDonors.length > 0) {
+            // Optionally, you can notify the donors here
+            // For example, you could send an email or push notification to the donors
+            
+            res.status(201).json({
+                status: "success",
+                message: "Blood request posted successfully.",
+                requestId: newRequest._id,  // Return the ID of the created request
+                matchingDonors: matchingDonors // Optionally include matching donors
+            });
+        } else {
+            res.status(201).json({
+                status: "success",
+                message: "Blood request posted successfully. No matching donors found.",
+                requestId: newRequest._id
+            });
+        }
+    } catch (error) {
+        console.error("Error posting blood request:", error.message);
+        res.status(500).json({
+            status: "failure",
+            message: "Error posting blood request.",
+            error: error.message
+        });
+    }
+});
+
+// API to fetch blood requests based on urgency
+app.post('/admin/bloodRequestsByUrgency', async (req, res) => {
+    try {
+        const { urgency } = req.body; // Extract urgency from the request body
+
+        // Validate that the urgency field is provided
+        if (!urgency) {
+            return res.status(400).json({
+                status: 'failure',
+                message: 'Urgency level is required.'
+            });
+        }
+
+        // Fetch blood requests that match the urgency level from the database
+        const requests = await bloodRequestModel.find({ urgency });
+
+        // Check if there are any requests matching the urgency level
+        if (requests.length > 0) {
+            res.status(200).json({
+                status: 'success',
+                message: `Blood requests with urgency level "${urgency}" found.`,
+                requests: requests
+            });
+        } else {
+            res.status(200).json({
+                status: 'success',
+                message: `No blood requests with urgency level "${urgency}" found.`,
+                requests: []
+            });
+        }
+    } catch (error) {
+        console.error("Error fetching blood requests by urgency:", error.message);
+        res.status(500).json({
+            status: 'failure',
+            message: 'Error fetching blood requests by urgency.',
+            error: error.message
+        });
+    }
+});
 
 app.listen(8080,()=>{
     console.log("server started...")
