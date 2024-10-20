@@ -6,7 +6,7 @@ const consumerLoginSchema = mongoose.Schema(
         fullname:{type:String,require:true},
         dateofbirth:{type:String,require:true},
         gender:{type:String,require:true},
-        bloodtype:{type:String,require:true},
+        BloodGroup:{type:String,require:true},
         phonenumber:{type:String,require:true},
         email:{type:String,require:true},
         homeaddress:{type:String,require:true},
