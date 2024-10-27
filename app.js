@@ -611,6 +611,94 @@ app.post('/admin/bloodinventoryconsumer', async (req, res) => {
     }
 });
 
+// api to show remaining in blood inventory
+app.post('/admin/bloodinventory', async (req, res) => {
+    try {
+        // Retrieve all blood group records from the BloodInventory table
+        const bloodInventory = await BloodInventory.find({}, 'BloodGroup Amount');
+
+        // Return the response with the list of blood groups and their amounts
+        res.json({
+            message: "Blood inventory retrieved successfully.",
+            inventory: bloodInventory
+        });
+    } catch (error) {
+        console.error("Error fetching blood inventory:", error);
+        return res.status(500).json({ error: "Error retrieving blood inventory." });
+    }
+});
+
+app.post('/admin/highestDonorsPerMonth', async (req, res) => {
+    try {
+        // Use aggregation to group by year and month, filtering out invalid dates
+        const results = await donationRequestModel.aggregate([
+            {
+                // Match documents with valid requested dates
+                $match: {
+                    requestedDate: { $ne: null } // Ensure requestedDate is not null
+                }
+            },
+            {
+                // Group by year, month, and userId
+                $group: {
+                    _id: {
+                        year: { $year: "$requestedDate" },
+                        month: { $month: "$requestedDate" },
+                        userId: "$userId" // Group by userId
+                    },
+                    totalAmount: { $sum: "$Amount" } // Sum the donation amounts
+                }
+            },
+            {
+                // Sort by year, month, and totalAmount descending
+                $sort: { "_id.year": 1, "_id.month": 1, totalAmount: -1 }
+            },
+            {
+                // Group again to get highest donor per month
+                $group: {
+                    _id: {
+                        year: "$_id.year",
+                        month: "$_id.month"
+                    },
+                    highestDonor: { $first: "$_id.userId" }, // Get the userId of the highest donor for each month
+                    totalAmount: { $first: "$totalAmount" } // Get the total amount for that donor
+                }
+            },
+            {
+                // Optionally, project the results to format the output
+                $project: {
+                    month: { $concat: [{ $toString: "$_id.year" }, "-", { $cond: [{ $lt: ["$_id.month", 10] }, { $concat: ["0", { $toString: "$_id.month" }] }, { $toString: "$_id.month" }] }] },  // Format month as 'YYYY-MM'
+                    highestDonor: "$highestDonor",
+                    totalAmount: "$totalAmount"
+                }
+            }
+        ]);
+
+        // Log the raw aggregation results
+        console.log('Raw Aggregation Results:', results);
+
+        // Now fetch the donor details for the highest donor in each month
+        const highestDonorDetails = await Promise.all(results.map(async (result) => {
+            const donorDetails = await donarloginModel.findById(result.highestDonor);
+            return {
+                month: result.month,
+                donor: donorDetails,
+                totalAmount: result.totalAmount
+            };
+        }));
+
+        console.log('Formatted Highest Donor Details:', highestDonorDetails); // Log the formatted results
+
+        res.status(200).json({
+            highestDonors: highestDonorDetails
+        });
+
+    } catch (error) {
+        console.error('Error fetching highest donors per month:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
 app.listen(8080,()=>{
     console.log("server started...")
 })
