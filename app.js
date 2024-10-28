@@ -628,6 +628,30 @@ app.post('/admin/bloodinventory', async (req, res) => {
     }
 });
 
+// API to show remaining blood inventory
+app.post('/admin/checkbloodinventory', async (req, res) => {
+    try {
+        // Retrieve all blood group records from the BloodInventory table
+        const bloodInventory = await BloodInventory.find({}, 'BloodGroup Amount');
+
+        // Prepare alerts for blood groups with amounts less than 10
+        const alerts = bloodInventory
+            .filter(item => item.Amount < 10)
+            .map(item => `${item.BloodGroup} blood is running low (${item.Amount} units remaining).`);
+
+        // Return the response with the list of blood groups and their amounts
+        res.json({
+            message: "Blood inventory retrieved successfully.",
+            inventory: bloodInventory,
+            alerts: alerts // Include alerts in the response
+        });
+    } catch (error) {
+        console.error("Error fetching blood inventory:", error);
+        return res.status(500).json({ error: "Error retrieving blood inventory." });
+    }
+});
+
+
 app.post('/admin/highestDonorsPerMonth', async (req, res) => {
     try {
         // Use aggregation to group by year and month, filtering out invalid dates
