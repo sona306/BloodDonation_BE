@@ -10,6 +10,7 @@ const hospitalloginModel = require("./Models/Hospital")
 const donationRequestModel = require("./Models/DonationRequest")
 const bloodRequestModel = require("./Models/BloodRequest")
 const BloodInventory = require('./Models/BloodInventory')
+const postModel = require('./Models/Post')
 
 let app = express()
 
@@ -724,6 +725,42 @@ app.post('/admin/highestDonorsPerMonth', async (req, res) => {
     }
 });
 
+//create post
+app.post("/admin/create",async(req,res)=>{
+    let input = req.body
+    let token = req.headers.token
+    jwt.verify(token,"blood-donation",async(error,decoded)=>{
+        if (decoded && decoded.email) {
+            let result = new postModel(input)
+            await result.save()
+            res.json({"status":"Success"})
+        } else {
+        res.json({"status":"Invalid Authentication"})
+        }
+    })
+})
+
+//view Mypost
+app.post("/admin/viewmypost",(req,res)=>{
+    let input = req.body
+    let token = req.headers.token
+    jwt.verify(token,"blood-donation",(error,decoded)=>{
+    if (decoded && decoded.email) {
+        postModel.find(input).then(
+            (items)=>{
+                res.json(items)
+            }
+        ).catch(
+            (error)=>{
+                res.json({"status":"Error"})
+            }
+        )
+    } else {
+        res.json({"status":"Invalid Authentication"})
+    }
+    })
+    
+})
 
 app.listen(8080,()=>{
     console.log("server started...")
