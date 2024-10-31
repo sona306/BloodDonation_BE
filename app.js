@@ -9,6 +9,9 @@ const consumerloginModel = require("./Models/Cosumer")
 const hospitalloginModel = require("./Models/Hospital")
 const donationRequestModel = require("./Models/DonationRequest")
 const bloodRequestModel = require("./Models/BloodRequest")
+const BloodInventory = require('./Models/BloodInventory')
+const postModel = require('./Models/Post')
+
 let app = express()
 
 app.use(express.json())
@@ -324,11 +327,31 @@ app.get("/admin/getPendingRequests", async (req, res) => {
     }
 });
 
+// Admin get approved requests
+app.post("/admin/getApprovedRequests", async (req, res) => {
+    try {
+        // Fetch approved donation requests (assuming `status` field is used to track the request status)
+        const approvedRequests = await donationRequestModel.find({ status: "Approved" });
+
+        res.json({
+            status: "success",
+            requests: approvedRequests // Return the approved requests
+        });
+    } catch (error) {
+        console.error("Error fetching approved requests:", error.message);
+        res.status(500).json({
+            status: "failure",
+            message: "Error fetching approved requests.",
+            error: error.message
+        });
+    }
+});
+
 // API to search for donors based on blood type for CONSUMER
 app.post('/consumer/searchDonor', async (req, res) => {
-    const { bloodtype } = req.body;  // Get blood type from the request body
+    const { BloodGroup } = req.body;  // Get blood type from the request body
 
-    if (!bloodtype) {
+    if (!BloodGroup) {
         return res.status(400).json({ 
             status: "failure", 
             message: "Blood type is required." 
@@ -338,13 +361,13 @@ app.post('/consumer/searchDonor', async (req, res) => {
     try {
         // Fetch donors with the matching blood type, projecting only the specified fields
         const donors = await donarloginModel.find(
-            { bloodtype: bloodtype }, 
+            { BloodGroup: BloodGroup }, 
             {
                 username: 1,
                 fullname: 1,
                 dateofbirth: 1,
                 gender: 1,
-                bloodtype: 1,
+                BloodGroup: 1,
                 phonenumber: 1,
                 email: 1,
                 homeaddress: 1,
@@ -365,14 +388,14 @@ app.post('/consumer/searchDonor', async (req, res) => {
         } else {
             res.status(404).json({
                 status: "failure",
-                message: `No donors found for blood type: ${bloodtype}`
+                message: `No donors found for blood type: ${BloodGroup}`
             });
         }
     } catch (error) {
         console.error("Error fetching donors:", error.message);
         res.status(500).json({
             status: "failure",
-            message: "Error fetching donors.",
+            message: "No donor has registered yet!",
             error: error.message
         });
     }
@@ -380,10 +403,10 @@ app.post('/consumer/searchDonor', async (req, res) => {
 
 // API to post a blood request from consumer side
 app.post('/consumer/requestBlood', async (req, res) => {
-    const {fullname, requestedDate, urgency, location, bloodtype, Amount } = req.body; // Extract fields from the request body
+    const {fullname, requestedDate, urgency, location, BloodGroup, Amount } = req.body; // Extract fields from the request body
 
     // Validate input
-    if ( !fullname || !requestedDate || !urgency || !location || !bloodtype || !Amount) {
+    if ( !fullname || !requestedDate || !urgency || !location || !BloodGroup || !Amount) {
         return res.status(400).json({ 
             status: "failure", 
             message: "All fields are required." 
@@ -397,12 +420,12 @@ app.post('/consumer/requestBlood', async (req, res) => {
             requestedDate,
             urgency,
             location,
-            bloodtype,
+            BloodGroup,
             Amount
         });
 
         // Fetch donors with the matching blood type (assuming BloodGroup matches blood type)
-        const matchingDonors = await donarloginModel.find({ bloodtype: bloodtype });
+        const matchingDonors = await donarloginModel.find({ BloodGroup: BloodGroup });
 
         if (matchingDonors.length > 0) {
             // Optionally, you can notify the donors here
@@ -470,6 +493,294 @@ app.post('/admin/bloodRequestsByUrgency', async (req, res) => {
         });
     }
 });
+
+app.post('/admin/updateInventoryFromApprovedRequests', async (req, res) => {
+    try {
+        const { requestId, Amount } = req.body; // Extract requestId and Amount from the request body
+
+        // Validate input
+        if (!requestId || Amount == null || Amount <= 0) {
+            return res.status(400).json({
+                status: 'failure',
+                message: 'Both requestId and a positive Amount are required.',
+            });
+        }
+
+        // Find the donor request by ID
+        const donorRequest = await donationRequestModel.findById(requestId);
+        if (!donorRequest) {
+            return res.status(404).json({
+                status: 'failure',
+                message: 'Donor request not found.',
+            });
+        }
+
+        // Check if the request is approved
+        if (donorRequest.status !== 'Approved') {
+            return res.status(400).json({
+                status: 'failure',
+                message: 'Only approved requests can update inventory.',
+            });
+        }
+
+        // Ensure BloodGroup is present in the donorRequest
+        if (!donorRequest.BloodGroup) {
+            return res.status(400).json({
+                status: 'failure',
+                message: 'Blood group is missing for this donor request. Cannot update inventory.',
+            });
+        }
+
+        // Check if the blood inventory exists for the given blood group
+        let bloodInventory = await BloodInventory.findOne({ BloodGroup: donorRequest.BloodGroup });
+
+        // If inventory exists for this blood group, add the amount
+        if (bloodInventory) {
+            bloodInventory.Amount += Amount; // Increment the existing amount
+            await bloodInventory.save(); // Save the updated inventory
+        } else {
+            // If no inventory exists for this blood group, create a new entry
+            bloodInventory = await BloodInventory.create({
+                BloodGroup: donorRequest.BloodGroup,
+                Amount: Amount,
+            });
+        }
+
+        // Respond with success message and updated quantity
+        return res.status(200).json({
+            status: 'success',
+            message: 'Blood inventory updated successfully.',
+            totalQuantity: bloodInventory.Amount, // Return the updated total quantity
+            bloodGroup: bloodInventory.BloodGroup // Include the blood group in the response
+        });
+
+    } catch (error) {
+        console.error('Error updating blood inventory:', error.message);
+        return res.status(500).json({
+            status: 'failure',
+            message: 'Error updating blood inventory.',
+            error: error.message,
+        });
+    }
+});
+
+
+
+app.post('/admin/bloodinventoryconsumer', async (req, res) => {
+    const { BloodGroup, Amount, urgency } = req.body;
+
+    // Validate urgency level
+    const validUrgencyLevels = ["Normal", "Urgent", "Critical"];
+    if (!validUrgencyLevels.includes(urgency)) {
+        return res.status(400).json({ error: "Invalid urgency level. Valid values are Normal, Urgent, or Critical." });
+    }
+
+    try {
+        // Normalize the blood group input
+        const normalizedBloodGroup = BloodGroup.trim().toUpperCase();
+
+        // Fetch the blood inventory for the given blood group
+        const bloodInventory = await BloodInventory.findOne({ BloodGroup: normalizedBloodGroup });
+
+        // Check if the blood group exists in the inventory
+        if (!bloodInventory) {
+            return res.status(404).json({ error: "Blood group not found in inventory." });
+        }
+
+        // Check if there are sufficient units (Amount) available
+        if (bloodInventory.Amount < Amount) {
+            return res.status(400).json({ error: "Insufficient blood units available." });
+        }
+
+        // Deduct the requested amount from the available units
+        const updatedAmount = bloodInventory.Amount - Amount;
+
+        // Update the blood inventory in the database
+        const updatedInventory = await BloodInventory.findOneAndUpdate(
+            { BloodGroup: normalizedBloodGroup },
+            { Amount: updatedAmount }, // Update the Amount field in the database
+            { new: true } // Return the updated document after modification
+        );
+
+        // Return the response with the updated remaining amount
+        res.json({
+            message: "Blood units successfully deducted from inventory.",
+            remainingAmount: updatedInventory.Amount // Use the updated document's Amount field
+        });
+    } catch (error) {
+        console.error("Error accessing blood inventory:", error);
+        return res.status(500).json({ error: "Error accessing blood inventory." });
+    }
+});
+
+// api to show remaining in blood inventory
+app.post('/admin/bloodinventory', async (req, res) => {
+    try {
+        // Retrieve all blood group records from the BloodInventory table
+        const bloodInventory = await BloodInventory.find({}, 'BloodGroup Amount');
+
+        // Return the response with the list of blood groups and their amounts
+        res.json({
+            message: "Blood inventory retrieved successfully.",
+            inventory: bloodInventory
+        });
+    } catch (error) {
+        console.error("Error fetching blood inventory:", error);
+        return res.status(500).json({ error: "Error retrieving blood inventory." });
+    }
+});
+
+// API to show remaining blood inventory
+app.post('/admin/checkbloodinventory', async (req, res) => {
+    try {
+        // Retrieve all blood group records from the BloodInventory table
+        const bloodInventory = await BloodInventory.find({}, 'BloodGroup Amount');
+
+        // Prepare alerts for blood groups with amounts less than 10
+        const alerts = bloodInventory
+            .filter(item => item.Amount < 10)
+            .map(item => `${item.BloodGroup} blood is running low (${item.Amount} units remaining).`);
+
+        // Return the response with the list of blood groups and their amounts
+        res.json({
+            message: "Blood inventory retrieved successfully.",
+            inventory: bloodInventory,
+            alerts: alerts // Include alerts in the response
+        });
+    } catch (error) {
+        console.error("Error fetching blood inventory:", error);
+        return res.status(500).json({ error: "Error retrieving blood inventory." });
+    }
+});
+
+
+app.post('/admin/highestDonorsPerSixMonths', async (req, res) => {
+    try {
+        // Use aggregation to group by year and 6-month periods, filtering out invalid dates
+        const results = await donationRequestModel.aggregate([
+            {
+                // Match documents with valid requested dates
+                $match: {
+                    requestedDate: { $ne: null } // Ensure requestedDate is not null
+                }
+            },
+            {
+                // Add a field for the 6-month period (1 for Jan-Jun, 2 for Jul-Dec)
+                $addFields: {
+                    sixMonthPeriod: {
+                        $cond: {
+                            if: { $lte: [{ $month: "$requestedDate" }, 6] },
+                            then: 1, // Jan-Jun
+                            else: 2 // Jul-Dec
+                        }
+                    },
+                    year: { $year: "$requestedDate" } // Extract the year
+                }
+            },
+            {
+                // Group by year, sixMonthPeriod, and userId
+                $group: {
+                    _id: {
+                        year: "$year",
+                        sixMonthPeriod: "$sixMonthPeriod",
+                        userId: "$userId" // Group by userId
+                    },
+                    totalAmount: { $sum: "$Amount" } // Sum the donation amounts
+                }
+            },
+            {
+                // Sort by year, sixMonthPeriod, and totalAmount descending
+                $sort: { "_id.year": 1, "_id.sixMonthPeriod": 1, totalAmount: -1 }
+            },
+            {
+                // Group again to get highest donor per 6-month period
+                $group: {
+                    _id: {
+                        year: "$_id.year",
+                        sixMonthPeriod: "$_id.sixMonthPeriod"
+                    },
+                    highestDonor: { $first: "$_id.userId" }, // Get the userId of the highest donor for each period
+                    totalAmount: { $first: "$totalAmount" } // Get the total amount for that donor
+                }
+            },
+            {
+                // Optionally, project the results to format the output
+                $project: {
+                    period: {
+                        $concat: [
+                            { $toString: "$_id.year" },
+                            "-",
+                            { $cond: [{ $eq: ["$_id.sixMonthPeriod", 1] }, "01-06", "07-12"] } // Format period as 'YYYY-01-06' or 'YYYY-07-12'
+                        ]
+                    },
+                    highestDonor: "$highestDonor",
+                    totalAmount: "$totalAmount"
+                }
+            }
+        ]);
+
+        // Log the raw aggregation results
+        console.log('Raw Aggregation Results:', results);
+
+        // Now fetch the donor details for the highest donor in each 6-month period
+        const highestDonorDetails = await Promise.all(results.map(async (result) => {
+            const donorDetails = await donarloginModel.findById(result.highestDonor);
+            return {
+                period: result.period,
+                donor: donorDetails,
+                totalAmount: result.totalAmount
+            };
+        }));
+
+        console.log('Formatted Highest Donor Details:', highestDonorDetails); // Log the formatted results
+
+        res.status(200).json({
+            highestDonors: highestDonorDetails
+        });
+
+    } catch (error) {
+        console.error('Error fetching highest donors per 6 months:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+
+//create post
+app.post("/admin/create",async(req,res)=>{
+    let input = req.body
+    let token = req.headers.token
+    jwt.verify(token,"blood-donation",async(error,decoded)=>{
+        if (decoded && decoded.email) {
+            let result = new postModel(input)
+            await result.save()
+            res.json({"status":"Success"})
+        } else {
+        res.json({"status":"Invalid Authentication"})
+        }
+    })
+})
+
+//view Mypost
+app.post("/admin/viewmypost",(req,res)=>{
+    let input = req.body
+    let token = req.headers.token
+    jwt.verify(token,"blood-donation",(error,decoded)=>{
+    if (decoded && decoded.email) {
+        postModel.find(input).then(
+            (items)=>{
+                res.json(items)
+            }
+        ).catch(
+            (error)=>{
+                res.json({"status":"Error"})
+            }
+        )
+    } else {
+        res.json({"status":"Invalid Authentication"})
+    }
+    })
+    
+})
 
 app.listen(8080,()=>{
     console.log("server started...")

@@ -17,7 +17,7 @@ const bloodRequestSchema = new mongoose.Schema({
         type: String,
         required: true
     },
-    bloodtype: {
+    BloodGroup: {
         type: String,
         required: true
     },
