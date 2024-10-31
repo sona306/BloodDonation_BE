@@ -395,7 +395,7 @@ app.post('/consumer/searchDonor', async (req, res) => {
         console.error("Error fetching donors:", error.message);
         res.status(500).json({
             status: "failure",
-            message: "Error fetching donors.",
+            message: "No donor has registered yet!",
             error: error.message
         });
     }
@@ -654,9 +654,9 @@ app.post('/admin/checkbloodinventory', async (req, res) => {
 });
 
 
-app.post('/admin/highestDonorsPerMonth', async (req, res) => {
+app.post('/admin/highestDonorsPerSixMonths', async (req, res) => {
     try {
-        // Use aggregation to group by year and month, filtering out invalid dates
+        // Use aggregation to group by year and 6-month periods, filtering out invalid dates
         const results = await donationRequestModel.aggregate([
             {
                 // Match documents with valid requested dates
@@ -665,35 +665,54 @@ app.post('/admin/highestDonorsPerMonth', async (req, res) => {
                 }
             },
             {
-                // Group by year, month, and userId
+                // Add a field for the 6-month period (1 for Jan-Jun, 2 for Jul-Dec)
+                $addFields: {
+                    sixMonthPeriod: {
+                        $cond: {
+                            if: { $lte: [{ $month: "$requestedDate" }, 6] },
+                            then: 1, // Jan-Jun
+                            else: 2 // Jul-Dec
+                        }
+                    },
+                    year: { $year: "$requestedDate" } // Extract the year
+                }
+            },
+            {
+                // Group by year, sixMonthPeriod, and userId
                 $group: {
                     _id: {
-                        year: { $year: "$requestedDate" },
-                        month: { $month: "$requestedDate" },
+                        year: "$year",
+                        sixMonthPeriod: "$sixMonthPeriod",
                         userId: "$userId" // Group by userId
                     },
                     totalAmount: { $sum: "$Amount" } // Sum the donation amounts
                 }
             },
             {
-                // Sort by year, month, and totalAmount descending
-                $sort: { "_id.year": 1, "_id.month": 1, totalAmount: -1 }
+                // Sort by year, sixMonthPeriod, and totalAmount descending
+                $sort: { "_id.year": 1, "_id.sixMonthPeriod": 1, totalAmount: -1 }
             },
             {
-                // Group again to get highest donor per month
+                // Group again to get highest donor per 6-month period
                 $group: {
                     _id: {
                         year: "$_id.year",
-                        month: "$_id.month"
+                        sixMonthPeriod: "$_id.sixMonthPeriod"
                     },
-                    highestDonor: { $first: "$_id.userId" }, // Get the userId of the highest donor for each month
+                    highestDonor: { $first: "$_id.userId" }, // Get the userId of the highest donor for each period
                     totalAmount: { $first: "$totalAmount" } // Get the total amount for that donor
                 }
             },
             {
                 // Optionally, project the results to format the output
                 $project: {
-                    month: { $concat: [{ $toString: "$_id.year" }, "-", { $cond: [{ $lt: ["$_id.month", 10] }, { $concat: ["0", { $toString: "$_id.month" }] }, { $toString: "$_id.month" }] }] },  // Format month as 'YYYY-MM'
+                    period: {
+                        $concat: [
+                            { $toString: "$_id.year" },
+                            "-",
+                            { $cond: [{ $eq: ["$_id.sixMonthPeriod", 1] }, "01-06", "07-12"] } // Format period as 'YYYY-01-06' or 'YYYY-07-12'
+                        ]
+                    },
                     highestDonor: "$highestDonor",
                     totalAmount: "$totalAmount"
                 }
@@ -703,11 +722,11 @@ app.post('/admin/highestDonorsPerMonth', async (req, res) => {
         // Log the raw aggregation results
         console.log('Raw Aggregation Results:', results);
 
-        // Now fetch the donor details for the highest donor in each month
+        // Now fetch the donor details for the highest donor in each 6-month period
         const highestDonorDetails = await Promise.all(results.map(async (result) => {
             const donorDetails = await donarloginModel.findById(result.highestDonor);
             return {
-                month: result.month,
+                period: result.period,
                 donor: donorDetails,
                 totalAmount: result.totalAmount
             };
@@ -720,10 +739,11 @@ app.post('/admin/highestDonorsPerMonth', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error fetching highest donors per month:', error);
+        console.error('Error fetching highest donors per 6 months:', error);
         res.status(500).json({ message: 'Internal server error', error: error.message });
     }
 });
+
 
 //create post
 app.post("/admin/create",async(req,res)=>{

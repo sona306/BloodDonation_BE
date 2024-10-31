@@ -5,7 +5,7 @@ const donationRequestSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "Donar"
     },
-    fullname:{
+    fullname: {
         type: String,
         required: true
     },
@@ -64,6 +64,40 @@ const donationRequestSchema = new mongoose.Schema({
             },
             message: "Quality is required if donation history is true."
         }
+    },
+    // New fields for donor health and eligibility
+    ageRequirement: {
+        type: String,
+        required: true,
+        //min: [18, "Minimum age for donation is 18"]
+    },
+    generalHealthCondition: {
+        type: String,
+        required: true
+    },
+    hemoglobinLevel: {
+        type: String,
+        required: true,
+       // min: [12.5, "Minimum hemoglobin level is 12.5 g/dL"]
+    },
+    pulseRate: {
+        type: String,
+        required: true,
+        //min: [50, "Pulse rate must be at least 50 bpm"],
+       // max: [100, "Pulse rate must not exceed 100 bpm"]
+    },
+    medicalAndLifestyleHistory: {
+        type: String,
+        required: true
+    },
+    medicationRestrictions: {
+        type: String,
+        required: true
+    },
+    waitingPeriodBetweenDonations: {
+        type: String,
+        required: true,
+       // min: [56, "Minimum waiting period between donations is 56 days"]
     }
 });
 
