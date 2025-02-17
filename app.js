@@ -782,6 +782,44 @@ app.post("/admin/viewmypost",(req,res)=>{
     
 })
 
+// Delete Post
+app.post("/admin/deletepost", (req, res) => {
+    let { postId } = req.body; // Get the postId to be deleted
+    let token = req.headers.token; // Extract token from headers
+
+    // Verify the token
+    jwt.verify(token, "blood-donation", (error, decoded) => {
+        if (decoded && decoded.email) {
+            // Find the post by ID and delete it
+            postModel.findByIdAndDelete(postId)
+                .then((result) => {
+                    if (result) {
+                        res.json({ "status": "Success", "message": "Post deleted successfully" });
+                    } else {
+                        res.json({ "status": "Error", "message": "Post not found" });
+                    }
+                })
+                .catch((err) => {
+                    res.json({ "status": "Error", "message": err.message });
+                });
+        } else {
+            res.json({ "status": "Invalid Authentication" });
+        }
+    });
+});
+
+
+app.get("/public/viewposts", (req, res) => {
+    postModel.find({})
+        .then((items) => {
+            res.json(items);
+        })
+        .catch((error) => {
+            res.json({ "status": "Error", "message": error.message });
+        });
+});
+
+
 app.listen(8080,()=>{
     console.log("server started...")
 })
