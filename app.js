@@ -11,6 +11,8 @@ const donationRequestModel = require("./Models/DonationRequest")
 const bloodRequestModel = require("./Models/BloodRequest")
 const BloodInventory = require('./Models/BloodInventory')
 const postModel = require('./Models/Post')
+const Camp = require('./Models/Camp')
+const NotificationModel = require('./Models/Notification')
 
 let app = express()
 
@@ -818,6 +820,45 @@ app.get("/public/viewposts", (req, res) => {
             res.json({ "status": "Error", "message": error.message });
         });
 });
+
+
+
+
+app.post("/admin/createcamp", async (req, res) => {
+    let input = req.body; // The input will contain the details of the camp
+    let token = req.headers.token; // The token is sent in the headers for authentication
+    
+    // Verify JWT token for authentication
+    jwt.verify(token, "blood-donation", async (error, decoded) => {
+      if (decoded && decoded.email) {
+        // If the JWT token is valid, proceed to create a new camp
+        try {
+          // Create a new Camp object with the input data and attach the decoded user (admin)'s ID
+          let newCamp = new Camp({
+            title: input.title,
+            location: input.location,
+            date: new Date(input.date), // Convert to Date if necessary
+            contact: input.contact,
+            description: input.description,
+            createdBy: decoded._id,  // Assuming `_id` is part of the decoded JWT payload (admin's ID)
+          });
+  
+          // Save the new camp to the database
+          await newCamp.save();
+  
+          // Respond with success message
+          res.json({ "status": "Success", "message": "Blood donation camp created successfully!" });
+        } catch (err) {
+          console.error("Error saving camp:", err);
+          res.json({ "status": "Error", "message": "Failed to create blood donation camp" });
+        }
+      } else {
+        // If the token is invalid or expired
+        res.json({ "status": "Invalid Authentication" });
+      }
+    });
+  });
+
 
 
 app.listen(8080,()=>{
