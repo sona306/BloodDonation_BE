@@ -12,7 +12,7 @@ const bloodRequestModel = require("./Models/BloodRequest")
 const BloodInventory = require('./Models/BloodInventory')
 const postModel = require('./Models/Post')
 const Camp = require('./Models/Camp')
-const NotificationModel = require('./Models/Notification')
+const Notification = require('./Models/Notification')
 
 let app = express()
 
@@ -822,45 +822,167 @@ app.get("/public/viewposts", (req, res) => {
 });
 
 
-
-
+//create post for camps
 app.post("/admin/createcamp", async (req, res) => {
-    let input = req.body; // The input will contain the details of the camp
-    let token = req.headers.token; // The token is sent in the headers for authentication
-    
-    // Verify JWT token for authentication
-    jwt.verify(token, "blood-donation", async (error, decoded) => {
-      if (decoded && decoded.email) {
-        // If the JWT token is valid, proceed to create a new camp
-        try {
-          // Create a new Camp object with the input data and attach the decoded user (admin)'s ID
-          let newCamp = new Camp({
-            title: input.title,
-            location: input.location,
-            date: new Date(input.date), // Convert to Date if necessary
-            contact: input.contact,
-            description: input.description,
-            createdBy: decoded._id,  // Assuming `_id` is part of the decoded JWT payload (admin's ID)
-          });
+  let input = req.body; // The input will contain the details of the camp
+  let token = req.headers.token; // The token is sent in the headers for authentication
+
+  // Verify JWT token for authentication
+  jwt.verify(token, "blood-donation", async (error, decoded) => {
+    if (decoded && decoded.email) {
+      // If the JWT token is valid, proceed to create a new camp
+      try {
+        // Create a new Camp object with the input data and attach the decoded user (admin)'s ID
+        let newCamp = new Camp({
+          title: input.title,
+          location: input.location,
+          date: new Date(input.date), // Convert to Date if necessary
+          contact: input.contact,
+          description: input.description,
+          createdBy: decoded._id,  // Assuming `_id` is part of the decoded JWT payload (admin's ID)
+        });
+
+        // Save the new camp to the database
+        await newCamp.save();
+
+        // Now, create notifications for all donors
+        const donors = await donarloginModel.find();  // Fetch all donors from the database
+        donors.forEach(async (donor) => {
+          const message = `New Blood Donation Camp: ${newCamp.title} is available at ${newCamp.location}. Date: ${newCamp.date}`;
+          const existingNotification = await Notification.findOne({ donorId: donor._id, campId: newCamp._id });
+          if (!existingNotification) {
+            const newNotification = new Notification({
+              donorId: donor._id,
+              campId: newCamp._id,
+              message,
+              isSeen: false,
+            });
+            await newNotification.save();  // Save the notification to the database
+          }
+        });
+
+        // Respond with success message after creating camp and sending notifications
+        res.json({ "status": "Success", "message": "Blood donation camp created and notifications sent to donors!" });
+      } catch (err) {
+        console.error("Error saving camp:", err);
+        res.json({ "status": "Error", "message": "Failed to create blood donation camp" });
+      }
+    } else {
+      // If the token is invalid or expired
+      res.json({ "status": "Invalid Authentication" });
+    }
+  });
+});
+
+
+//camp notification for donors
+// Get all camps for donors
+app.get('/donor/camps', async (req, res) => {
+    try {
+      const camps = await Camp.find();
+      res.status(200).json({ camps });
+    } catch (error) {
+      console.error('Error fetching camps:', error);
+      res.status(500).json({ message: 'Server error, unable to fetch camps' });
+    }
+  });
   
-          // Save the new camp to the database
-          await newCamp.save();
-  
-          // Respond with success message
-          res.json({ "status": "Success", "message": "Blood donation camp created successfully!" });
-        } catch (err) {
-          console.error("Error saving camp:", err);
-          res.json({ "status": "Error", "message": "Failed to create blood donation camp" });
-        }
-      } else {
-        // If the token is invalid or expired
-        res.json({ "status": "Invalid Authentication" });
+// Create notifications for new camps (Admin posting new camps)
+app.post('/admin/camps', async (req, res) => {
+  try {
+    const { camp } = req.body;
+    const newCamp = new Camp(camp);
+    await newCamp.save();
+
+    // Create a notification for all donors
+    const donors = await donarloginModel.find();  // Fetch all donors
+    donors.forEach(async (donor) => {
+      const message = `New Blood Donation Camp: ${newCamp.name}`;
+      const existingNotification = await Notification.findOne({ donorId: donor._id, campId: newCamp._id });
+      if (!existingNotification) {
+        const newNotification = new Notification({ donorId: donor._id, campId: newCamp._id, message, isSeen: false });
+        await newNotification.save();
       }
     });
+
+    res.status(201).json({ message: 'Camp and notifications created successfully' });
+  } catch (error) {
+    console.error('Error creating camp and notifications:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Fetch Unseen Notifications for a specific donor
+app.get('/donor/notifications/unseen', async (req, res) => {
+    const donorId = req.query.donorId;  // The donorId will be passed in the query string
+    
+    if (!donorId) {
+      return res.status(400).json({ message: "Donor ID is required" });
+    }
+  
+    try {
+      // Fetch all unseen notifications for the donor
+      const unseenNotifications = await Notification.find({ donorId, isSeen: false });
+  
+      // If no unseen notifications
+      if (unseenNotifications.length === 0) {
+        return res.status(200).json({ message: "No new notifications", notifications: [] });
+      }
+  
+      res.status(200).json({ notifications: unseenNotifications });
+    } catch (error) {
+      console.error("Error fetching unseen notifications:", error);
+      res.status(500).json({ message: "Server error" });
+    }
   });
 
+  // Fetch All Notifications for a specific donor
+app.get('/donor/notifications/all', async (req, res) => {
+    const donorId = req.query.donorId;  // The donorId will be passed in the query string
+    
+    if (!donorId) {
+      return res.status(400).json({ message: "Donor ID is required" });
+    }
+  
+    try {
+      // Fetch all notifications (seen and unseen) for the donor
+      const allNotifications = await Notification.find({ donorId });
+  
+      // If no notifications
+      if (allNotifications.length === 0) {
+        return res.status(200).json({ message: "No notifications found", notifications: [] });
+      }
+  
+      res.status(200).json({ notifications: allNotifications });
+    } catch (error) {
+      console.error("Error fetching all notifications:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
 
-
+  // Mark Notifications as Seen for a specific donor
+app.post('/donor/notifications/markAsSeen', async (req, res) => {
+    const { donorId } = req.body;  // Donor ID to mark the notifications
+  
+    if (!donorId) {
+      return res.status(400).json({ message: "Donor ID is required" });
+    }
+  
+    try {
+      // Mark all unseen notifications as seen for the donor
+      const result = await Notification.updateMany(
+        { donorId, isSeen: false },
+        { $set: { isSeen: true } }
+      );
+  
+      res.status(200).json({ message: `${result.modifiedCount} notifications marked as seen` });
+    } catch (error) {
+      console.error("Error marking notifications as seen:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+  
 app.listen(8080,()=>{
     console.log("server started...")
 })
+

@@ -1,11 +1,28 @@
 const mongoose = require('mongoose');
 
 const notificationSchema = new mongoose.Schema({
-    message: { type: String, required: true },
-    donorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Donar' },
-    read: { type: Boolean, default: false },
-    campId: { type: mongoose.Schema.Types.ObjectId, ref: 'Camp' }, // Reference to the camp
-}, { timestamps: true });
+  donorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'Donor',
+  },
+  campId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: true,
+    ref: 'Camp',
+  },
+  message: {
+    type: String,
+    required: true,
+  },
+  isSeen: {
+    type: Boolean,
+    default: false,
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now,
+  },
+});
 
-const NotificationModel = mongoose.model('Notification', notificationSchema);
-module.exports = NotificationModel;
+module.exports = mongoose.model('Notification', notificationSchema);
