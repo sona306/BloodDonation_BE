@@ -13,6 +13,7 @@ const BloodInventory = require('./Models/BloodInventory')
 const postModel = require('./Models/Post')
 const Camp = require('./Models/Camp')
 const Notification = require('./Models/Notification')
+const Doubt = require('./Models/Doubt')
 
 let app = express()
 
@@ -981,7 +982,9 @@ app.post('/donor/notifications/markAsSeen', async (req, res) => {
       res.status(500).json({ message: "Server error" });
     }
   });
+
   
+
 app.listen(8080,()=>{
     console.log("server started...")
 })
