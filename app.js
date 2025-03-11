@@ -3,6 +3,8 @@ const mongoose = require("mongoose")
 const cors = require("cors")
 const bcrypt = require("bcrypt")
 const jwt = require("jsonwebtoken")
+const nodemailer = require('nodemailer');
+
 const loginModel = require("./Models/Admin")
 const donarloginModel = require("./Models/Donar")
 const consumerloginModel = require("./Models/Cosumer")
@@ -1245,6 +1247,52 @@ app.get('/api/donation-requests', async (req, res) => {
     }
 });
   
+//mail to donors
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: 'line30356@gmail.com', // ✅ Your Gmail ID
+        pass: 'tedq pxms pecj ocbr' // ✅ Use the generated App Password
+    }
+});
+
+// ✅ Endpoint to send reminder email after 90 days
+app.post('/sendReminder', async (req, res) => {
+    const { fullname, lastDonationDate,email } = req.body;
+    if (!fullname || !lastDonationDate) {
+        return res.status(400).json({ status: 'error', message: 'Missing required fields' });
+    }
+
+    // ✅ Calculate next eligible date (after 90 days)
+    const lastDate = new Date(lastDonationDate);
+    const nextDonationDate = new Date(lastDate.setDate(lastDate.getDate() + 90)).toISOString().split('T')[0];
+
+    const mailOptions = {
+        from: 'line30356@gmail.com', // ✅ Sent from admin email
+        to: email,
+        subject: 'You are eligible to donate blood again!',
+        html: `
+            <h2>Blood Donation Eligibility Reminder</h2>
+            <p>Dear <strong>${fullname}</strong>,</p>
+            <p>We are happy to inform you that you are eligible to donate blood again on:</p>
+            <ul>
+                <li><strong>Date:</strong> ${nextDonationDate}</li>
+            </ul>
+            <p>Your previous donation has helped save lives. We hope to see you again soon!</p>
+            <p>Thank you for your valuable contribution!</p>
+            <br>
+            <p>Regards,<br><strong>Blood Donation Team</strong></p>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        res.status(200).json({ status: 'success', message: `Reminder sent to ${email}` });
+    } catch (error) {
+        console.error('Error sending email:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
 
 app.listen(8080,()=>{
     console.log("server started...")
