@@ -14,6 +14,7 @@ const postModel = require('./Models/Post')
 const Camp = require('./Models/Camp')
 const Notification = require('./Models/Notification')
 const Doubt = require('./Models/Doubt')
+const BloodRequestHospital = require('./Models/BloodRequestHospital')
 
 let app = express()
 
@@ -983,7 +984,139 @@ app.post('/donor/notifications/markAsSeen', async (req, res) => {
     }
   });
 
-  
+//hospital emergency req
+app.post('/api/hospitals/emergency-blood-request', async (req, res) => {
+    try {
+        let { hospitalName, bloodType, unitsRequired, urgencyLevel, contactNumber, location, additionalNotes, expectedDeliveryTime } = req.body;
+
+        // Validate required fields
+        if (!hospitalName || !bloodType || !unitsRequired || !urgencyLevel || !contactNumber) {
+            return res.status(400).json({ status: "error", message: "Missing required fields" });
+        }
+
+        // Ensure urgencyLevel is valid
+        const validUrgencyLevels = ['High', 'Medium', 'Low'];
+        if (!validUrgencyLevels.includes(urgencyLevel)) {
+            return res.status(400).json({ status: "error", message: "Invalid urgency level" });
+        }
+
+        // Validate expectedDeliveryTime format (optional)
+        let deliveryTime = expectedDeliveryTime ? new Date(expectedDeliveryTime) : null;
+        if (expectedDeliveryTime && isNaN(deliveryTime.getTime())) {
+            return res.status(400).json({ status: "error", message: "Invalid expected delivery time format" });
+        }
+
+        // Create a new blood request (without hospitalId)
+        const newRequest = new BloodRequestHospital({
+            hospitalName,
+            bloodType,
+            unitsRequired,
+            urgencyLevel,
+            contactNumber,
+            location,
+            additionalNotes,
+            expectedDeliveryTime: deliveryTime,
+            status: "pending",
+            requestTime: new Date()
+        });
+
+        await newRequest.save();
+
+        
+        res.status(201).json({
+            status: "success",
+            message: "Emergency blood request sent to the admin.",
+            requestId: newRequest._id
+        });
+    } catch (error) {
+        console.error("Error processing emergency blood request:", error);
+        res.status(500).json({ status: "error", message: "Internal server error" });
+    }
+});
+
+// Admin Approves Emergency Blood Request
+app.post('/api/admin/approve-emergency-request', async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const { requestId } = req.body;
+
+        // Validate request ID
+        if (!mongoose.Types.ObjectId.isValid(requestId)) {
+            return res.status(400).json({ status: "error", message: "Invalid request ID format" });
+        }
+
+        // Find the blood request
+        const bloodRequest = await BloodRequestHospital.findById(requestId).session(session);
+        if (!bloodRequest) {
+            return res.status(404).json({ status: "error", message: "Blood request not found" });
+        }
+
+        // Check if request is already processed
+        if (bloodRequest.status !== "pending") {
+            return res.status(400).json({ status: "error", message: "Request already processed." });
+        }
+
+        // Find blood inventory for the requested blood group
+        const inventory = await BloodInventory.findOne({ BloodGroup: bloodRequest.bloodType }).session(session);
+
+        if (!inventory || inventory.Amount < bloodRequest.unitsRequired) {
+            return res.status(400).json({
+                status: "error",
+                message: `Not enough blood units available. Available: ${inventory ? inventory.Amount : 0} units.`,
+            });
+        }
+
+        // Deduct units from inventory
+        const updatedInventory = await BloodInventory.findOneAndUpdate(
+            { BloodGroup: bloodRequest.bloodType },
+            { $inc: { Amount: -bloodRequest.unitsRequired } },  // Deduct units
+            { new: true, session }
+        );
+
+        // Approve request
+        bloodRequest.status = "approved";
+        bloodRequest.responseMessage = "Request approved by admin.";
+        bloodRequest.approvalTime = new Date();
+        await bloodRequest.save({ session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        console.log("✅ Admin Approved Emergency Blood Request:", bloodRequest);
+
+        return res.status(200).json({
+            status: "success",
+            message: "Request approved. Blood units have been deducted from inventory.",
+            requestId: bloodRequest._id,
+            updatedInventory,  // Send updated inventory data to frontend
+        });
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+
+        console.error("❌ Error processing admin approval:", error);
+        return res.status(500).json({ status: "error", message: "Internal server error" });
+    }
+});
+
+
+app.get('/api/hospitals/emergency-blood-requests', async (req, res) => {
+    try {
+        const requests = await BloodRequestHospital.find({ status: "pending" });
+
+        if (!requests || requests.length === 0) {
+            return res.status(200).json({ requests: [] }); // No pending requests
+        }
+
+        res.status(200).json({ requests });
+    } catch (error) {
+        console.error("❌ Error fetching emergency blood requests:", error);
+        res.status(500).json({ status: "error", message: "Server error" });
+    }
+});
+
 
 app.listen(8080,()=>{
     console.log("server started...")
