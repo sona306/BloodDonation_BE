@@ -15,6 +15,7 @@ const Camp = require('./Models/Camp')
 const Notification = require('./Models/Notification')
 const Doubt = require('./Models/Doubt')
 const BloodRequestHospital = require('./Models/BloodRequestHospital')
+const CampRegistration = require('./Models/CampRegistration')
 
 let app = express()
 
@@ -1117,6 +1118,133 @@ app.get('/api/hospitals/emergency-blood-requests', async (req, res) => {
     }
 });
 
+
+//camp registration
+app.post("/registercamp", async (req, res) => {
+    let { campId, name, email, phone, bloodGroup } = req.body; // Include bloodGroup in request body
+  
+    try {
+      // Check if the camp exists
+      let camp = await Camp.findById(campId);
+      if (!camp) {
+        return res.json({ status: "Error", message: "Camp not found" });
+      }
+  
+      // Check if the user is already registered for the camp using email or phone
+      let existingRegistration = await CampRegistration.findOne({
+        campId: campId,
+        $or: [{ email }, { phone }],
+      });
+  
+      if (existingRegistration) {
+        return res.json({ status: "Error", message: "You are already registered for this camp" });
+      }
+  
+      // Create a new registration entry
+      let newRegistration = new CampRegistration({
+        campId: campId,
+        name,
+        email,
+        phone,
+        bloodGroup,
+        registeredAt: new Date(),
+      });
+  
+      await newRegistration.save(); // Save registration to database
+  
+      // Respond with success message
+      res.json({
+        status: "Success",
+        message: "Successfully registered for the camp",
+      });
+    } catch (err) {
+      console.error("Error registering for camp:", err);
+      res.json({ status: "Error", message: "Failed to register for the camp" });
+    }
+  });
+  
+// Fetch all camps with full details
+app.get('/camps', async (req, res) => {
+    console.log('Fetching camps...');
+    try {
+      const camps = await Camp.find({}, '-__v');
+      console.log('Camps fetched:', camps);
+      res.json(camps);
+    } catch (err) {
+      console.error('Error fetching camps:', err);
+      res.status(500).json({ message: 'Failed to fetch camps' });
+    }
+  });
+  
+// Fetch all camp registrations with full details for admin
+app.get("/admin/camp-registrations", async (req, res) => {
+    console.log("Fetching all camp registrations...");
+
+    try {
+        // Fetch registrations and populate camp details
+        const registrations = await CampRegistration.find({})
+            .populate({
+                path: 'campId',
+                select: 'name location date',
+                strictPopulate: false, // Avoid errors if campId is missing
+            })
+            .select('-__v');
+
+        // Filter out invalid or incomplete records
+        const validRegistrations = registrations.filter(reg => reg.campId?.location);
+
+        // Sort by camp location in ascending order
+        validRegistrations.sort((a, b) =>
+            a.campId.location.localeCompare(b.campId.location)
+        );
+
+        if (validRegistrations.length === 0) {
+            console.warn("No valid registrations available.");
+            return res.status(404).json({ status: "Error", message: "No registrations available" });
+        }
+
+        console.log(`Fetched ${validRegistrations.length} registrations`);
+        res.status(200).json({ status: "Success", data: validRegistrations });
+    } catch (err) {
+        console.error("Error fetching registrations:", err.message);
+        res.status(500).json({ status: "Error", message: err.message || "Failed to fetch registrations" });
+    }
+});
+
+//donation reminder
+app.get('/api/donation-requests', async (req, res) => {
+    try {
+        const donationRequests = await donationRequestModel.find()
+            .select('userId fullname requestedDate status location BloodGroup Amount');
+
+        // Format data to extract date, month, year and future date
+        const formattedRequests = donationRequests.map(request => {
+            const requestDate = new Date(request.requestedDate);
+            
+            // Add 90 days to the requested date
+            const futureDate = new Date(requestDate);
+            futureDate.setDate(futureDate.getDate() + 90);
+
+            return {
+                userId: request.userId,
+                fullname: request.fullname,
+                date: requestDate.getDate(), // Extract day of the month
+                month: requestDate.toLocaleString('default', { month: 'long' }), // Full month name
+                year: requestDate.getFullYear(), // Year
+                futureDate: futureDate.toLocaleDateString(), // Format future date
+                status: request.status,
+                location: request.location,
+                BloodGroup: request.BloodGroup,
+                Amount: request.Amount
+            };
+        });
+
+        res.status(200).json(formattedRequests);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch donation requests', error: error.message });
+    }
+});
+  
 
 app.listen(8080,()=>{
     console.log("server started...")
