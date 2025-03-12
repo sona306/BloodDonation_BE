@@ -1251,8 +1251,8 @@ app.get('/api/donation-requests', async (req, res) => {
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        user: 'line30356@gmail.com', // ✅ Your Gmail ID
-        pass: 'tedq pxms pecj ocbr' // ✅ Use the generated App Password
+        user: 'line30356@gmail.com', // 
+        pass: 'tedq pxms pecj ocbr' // 
     }
 });
 
@@ -1288,6 +1288,41 @@ app.post('/sendReminder', async (req, res) => {
     try {
         await transporter.sendMail(mailOptions);
         res.status(200).json({ status: 'success', message: `Reminder sent to ${email}` });
+    } catch (error) {
+        console.error('Error sending email:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+//emergency req mail
+// ✅ Endpoint to send emergency request email to multiple donors
+app.post('/sendEmergencyRequest', async (req, res) => {
+    const { bloodType, recipients } = req.body;
+
+    if (!bloodType || !recipients || !recipients.length) {
+        return res.status(400).json({ status: 'error', message: 'Missing required fields or recipients list is empty' });
+    }
+
+    // ✅ Email content
+    const mailOptions = {
+        from: 'line30356@gmail.com', 
+        to: recipients.join(','), // Convert array to comma-separated string
+        subject: `Urgent Need for ${bloodType} Blood`,
+        html: `
+            <h2>Emergency Blood Donation Request</h2>
+            <p>Dear Donors and Consumers,</p>
+            <p>We urgently require <strong>${bloodType}</strong> blood to save a life. If you are eligible and willing to donate, please contact us immediately.</p>
+            <p>Your contribution can save lives!</p>
+            <br>
+            <p>Thank you for your support!</p>
+            <br>
+            <p>Regards,<br><strong>Blood Donation Team</strong></p>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        res.status(200).json({ status: 'success', message: `Emergency request sent to ${recipients.length} recipients` });
     } catch (error) {
         console.error('Error sending email:', error);
         res.status(500).json({ status: 'error', message: error.message });
