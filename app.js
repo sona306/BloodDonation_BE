@@ -1329,6 +1329,28 @@ app.post('/sendEmergencyRequest', async (req, res) => {
     }
 });
 
+
+// Get all donor and consumer emails
+app.get('/getAllEmails', async (req, res) => {
+    try {
+        // ✅ Fetch donor emails
+        const donorEmails = await donarloginModel.find({}, 'email');
+        // ✅ Fetch consumer emails
+        const consumerEmails = await consumerloginModel.find({}, 'email');
+
+        // ✅ Combine emails into one list
+        const allEmails = [
+            ...donorEmails.map(donor => donor.email),
+            ...consumerEmails.map(consumer => consumer.email)
+        ];
+
+        res.status(200).json({ success: true, emails: allEmails });
+    } catch (error) {
+        console.error('Error fetching emails:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch emails' });
+    }
+});
+
 app.listen(8080,()=>{
     console.log("server started...")
 })

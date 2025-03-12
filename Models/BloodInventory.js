@@ -8,7 +8,7 @@ const bloodInventorySchema = new mongoose.Schema({
     requestType: {
         type: String,
         enum: ["ConsumerRequest", "HospitalRequest"], // Identify request source
-        required: true
+        required: false
     },
     Amount: { 
         type: Number, 
