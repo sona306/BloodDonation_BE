@@ -3,6 +3,8 @@ const mongoose = require("mongoose")
 const cors = require("cors")
 const bcrypt = require("bcrypt")
 const jwt = require("jsonwebtoken")
+const nodemailer = require('nodemailer');
+
 const loginModel = require("./Models/Admin")
 const donarloginModel = require("./Models/Donar")
 const consumerloginModel = require("./Models/Cosumer")
@@ -11,6 +13,11 @@ const donationRequestModel = require("./Models/DonationRequest")
 const bloodRequestModel = require("./Models/BloodRequest")
 const BloodInventory = require('./Models/BloodInventory')
 const postModel = require('./Models/Post')
+const Camp = require('./Models/Camp')
+const Notification = require('./Models/Notification')
+const Doubt = require('./Models/Doubt')
+const BloodRequestHospital = require('./Models/BloodRequestHospital')
+const CampRegistration = require('./Models/CampRegistration')
 
 let app = express()
 
@@ -820,6 +827,531 @@ app.get("/public/viewposts", (req, res) => {
 });
 
 
+//create post for camps
+app.post("/admin/createcamp", async (req, res) => {
+  let input = req.body; // The input will contain the details of the camp
+  let token = req.headers.token; // The token is sent in the headers for authentication
+
+  // Verify JWT token for authentication
+  jwt.verify(token, "blood-donation", async (error, decoded) => {
+    if (decoded && decoded.email) {
+      // If the JWT token is valid, proceed to create a new camp
+      try {
+        // Create a new Camp object with the input data and attach the decoded user (admin)'s ID
+        let newCamp = new Camp({
+          title: input.title,
+          location: input.location,
+          date: new Date(input.date), // Convert to Date if necessary
+          contact: input.contact,
+          description: input.description,
+          createdBy: decoded._id,  // Assuming `_id` is part of the decoded JWT payload (admin's ID)
+        });
+
+        // Save the new camp to the database
+        await newCamp.save();
+
+        // Now, create notifications for all donors
+        const donors = await donarloginModel.find();  // Fetch all donors from the database
+        donors.forEach(async (donor) => {
+          const message = `New Blood Donation Camp: ${newCamp.title} is available at ${newCamp.location}. Date: ${newCamp.date}`;
+          const existingNotification = await Notification.findOne({ donorId: donor._id, campId: newCamp._id });
+          if (!existingNotification) {
+            const newNotification = new Notification({
+              donorId: donor._id,
+              campId: newCamp._id,
+              message,
+              isSeen: false,
+            });
+            await newNotification.save();  // Save the notification to the database
+          }
+        });
+
+        // Respond with success message after creating camp and sending notifications
+        res.json({ "status": "Success", "message": "Blood donation camp created and notifications sent to donors!" });
+      } catch (err) {
+        console.error("Error saving camp:", err);
+        res.json({ "status": "Error", "message": "Failed to create blood donation camp" });
+      }
+    } else {
+      // If the token is invalid or expired
+      res.json({ "status": "Invalid Authentication" });
+    }
+  });
+});
+
+
+//camp notification for donors
+// Get all camps for donors
+app.get('/donor/camps', async (req, res) => {
+    try {
+      const camps = await Camp.find();
+      res.status(200).json({ camps });
+    } catch (error) {
+      console.error('Error fetching camps:', error);
+      res.status(500).json({ message: 'Server error, unable to fetch camps' });
+    }
+  });
+  
+// Create notifications for new camps (Admin posting new camps)
+app.post('/admin/camps', async (req, res) => {
+  try {
+    const { camp } = req.body;
+    const newCamp = new Camp(camp);
+    await newCamp.save();
+
+    // Create a notification for all donors
+    const donors = await donarloginModel.find();  // Fetch all donors
+    donors.forEach(async (donor) => {
+      const message = `New Blood Donation Camp: ${newCamp.name}`;
+      const existingNotification = await Notification.findOne({ donorId: donor._id, campId: newCamp._id });
+      if (!existingNotification) {
+        const newNotification = new Notification({ donorId: donor._id, campId: newCamp._id, message, isSeen: false });
+        await newNotification.save();
+      }
+    });
+
+    res.status(201).json({ message: 'Camp and notifications created successfully' });
+  } catch (error) {
+    console.error('Error creating camp and notifications:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Fetch Unseen Notifications for a specific donor
+app.get('/donor/notifications/unseen', async (req, res) => {
+    const donorId = req.query.donorId;  // The donorId will be passed in the query string
+    
+    if (!donorId) {
+      return res.status(400).json({ message: "Donor ID is required" });
+    }
+  
+    try {
+      // Fetch all unseen notifications for the donor
+      const unseenNotifications = await Notification.find({ donorId, isSeen: false });
+  
+      // If no unseen notifications
+      if (unseenNotifications.length === 0) {
+        return res.status(200).json({ message: "No new notifications", notifications: [] });
+      }
+  
+      res.status(200).json({ notifications: unseenNotifications });
+    } catch (error) {
+      console.error("Error fetching unseen notifications:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Fetch All Notifications for a specific donor
+app.get('/donor/notifications/all', async (req, res) => {
+    const donorId = req.query.donorId;  // The donorId will be passed in the query string
+    
+    if (!donorId) {
+      return res.status(400).json({ message: "Donor ID is required" });
+    }
+  
+    try {
+      // Fetch all notifications (seen and unseen) for the donor
+      const allNotifications = await Notification.find({ donorId });
+  
+      // If no notifications
+      if (allNotifications.length === 0) {
+        return res.status(200).json({ message: "No notifications found", notifications: [] });
+      }
+  
+      res.status(200).json({ notifications: allNotifications });
+    } catch (error) {
+      console.error("Error fetching all notifications:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+  // Mark Notifications as Seen for a specific donor
+app.post('/donor/notifications/markAsSeen', async (req, res) => {
+    const { donorId } = req.body;  // Donor ID to mark the notifications
+  
+    if (!donorId) {
+      return res.status(400).json({ message: "Donor ID is required" });
+    }
+  
+    try {
+      // Mark all unseen notifications as seen for the donor
+      const result = await Notification.updateMany(
+        { donorId, isSeen: false },
+        { $set: { isSeen: true } }
+      );
+  
+      res.status(200).json({ message: `${result.modifiedCount} notifications marked as seen` });
+    } catch (error) {
+      console.error("Error marking notifications as seen:", error);
+      res.status(500).json({ message: "Server error" });
+    }
+  });
+
+//hospital emergency req
+app.post('/api/hospitals/emergency-blood-request', async (req, res) => {
+    try {
+        let { hospitalName, bloodType, unitsRequired, urgencyLevel, contactNumber, location, additionalNotes, expectedDeliveryTime } = req.body;
+
+        // Validate required fields
+        if (!hospitalName || !bloodType || !unitsRequired || !urgencyLevel || !contactNumber) {
+            return res.status(400).json({ status: "error", message: "Missing required fields" });
+        }
+
+        // Ensure urgencyLevel is valid
+        const validUrgencyLevels = ['High', 'Medium', 'Low'];
+        if (!validUrgencyLevels.includes(urgencyLevel)) {
+            return res.status(400).json({ status: "error", message: "Invalid urgency level" });
+        }
+
+        // Validate expectedDeliveryTime format (optional)
+        let deliveryTime = expectedDeliveryTime ? new Date(expectedDeliveryTime) : null;
+        if (expectedDeliveryTime && isNaN(deliveryTime.getTime())) {
+            return res.status(400).json({ status: "error", message: "Invalid expected delivery time format" });
+        }
+
+        // Create a new blood request (without hospitalId)
+        const newRequest = new BloodRequestHospital({
+            hospitalName,
+            bloodType,
+            unitsRequired,
+            urgencyLevel,
+            contactNumber,
+            location,
+            additionalNotes,
+            expectedDeliveryTime: deliveryTime,
+            status: "pending",
+            requestTime: new Date()
+        });
+
+        await newRequest.save();
+
+        
+        res.status(201).json({
+            status: "success",
+            message: "Emergency blood request sent to the admin.",
+            requestId: newRequest._id
+        });
+    } catch (error) {
+        console.error("Error processing emergency blood request:", error);
+        res.status(500).json({ status: "error", message: "Internal server error" });
+    }
+});
+
+// Admin Approves Emergency Blood Request
+app.post('/api/admin/approve-emergency-request', async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const { requestId } = req.body;
+
+        // Validate request ID
+        if (!mongoose.Types.ObjectId.isValid(requestId)) {
+            return res.status(400).json({ status: "error", message: "Invalid request ID format" });
+        }
+
+        // Find the blood request
+        const bloodRequest = await BloodRequestHospital.findById(requestId).session(session);
+        if (!bloodRequest) {
+            return res.status(404).json({ status: "error", message: "Blood request not found" });
+        }
+
+        // Check if request is already processed
+        if (bloodRequest.status !== "pending") {
+            return res.status(400).json({ status: "error", message: "Request already processed." });
+        }
+
+        // Find blood inventory for the requested blood group
+        const inventory = await BloodInventory.findOne({ BloodGroup: bloodRequest.bloodType }).session(session);
+
+        if (!inventory || inventory.Amount < bloodRequest.unitsRequired) {
+            return res.status(400).json({
+                status: "error",
+                message: `Not enough blood units available. Available: ${inventory ? inventory.Amount : 0} units.`,
+            });
+        }
+
+        // Deduct units from inventory
+        const updatedInventory = await BloodInventory.findOneAndUpdate(
+            { BloodGroup: bloodRequest.bloodType },
+            { $inc: { Amount: -bloodRequest.unitsRequired } },  // Deduct units
+            { new: true, session }
+        );
+
+        // Approve request
+        bloodRequest.status = "approved";
+        bloodRequest.responseMessage = "Request approved by admin.";
+        bloodRequest.approvalTime = new Date();
+        await bloodRequest.save({ session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        console.log("✅ Admin Approved Emergency Blood Request:", bloodRequest);
+
+        return res.status(200).json({
+            status: "success",
+            message: "Request approved. Blood units have been deducted from inventory.",
+            requestId: bloodRequest._id,
+            updatedInventory,  // Send updated inventory data to frontend
+        });
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
+
+        console.error("❌ Error processing admin approval:", error);
+        return res.status(500).json({ status: "error", message: "Internal server error" });
+    }
+});
+
+
+app.get('/api/hospitals/emergency-blood-requests', async (req, res) => {
+    try {
+        const requests = await BloodRequestHospital.find({ status: "pending" });
+
+        if (!requests || requests.length === 0) {
+            return res.status(200).json({ requests: [] }); // No pending requests
+        }
+
+        res.status(200).json({ requests });
+    } catch (error) {
+        console.error("❌ Error fetching emergency blood requests:", error);
+        res.status(500).json({ status: "error", message: "Server error" });
+    }
+});
+
+
+//camp registration
+app.post("/registercamp", async (req, res) => {
+    let { campId, name, email, phone, bloodGroup } = req.body; // Include bloodGroup in request body
+  
+    try {
+      // Check if the camp exists
+      let camp = await Camp.findById(campId);
+      if (!camp) {
+        return res.json({ status: "Error", message: "Camp not found" });
+      }
+  
+      // Check if the user is already registered for the camp using email or phone
+      let existingRegistration = await CampRegistration.findOne({
+        campId: campId,
+        $or: [{ email }, { phone }],
+      });
+  
+      if (existingRegistration) {
+        return res.json({ status: "Error", message: "You are already registered for this camp" });
+      }
+  
+      // Create a new registration entry
+      let newRegistration = new CampRegistration({
+        campId: campId,
+        name,
+        email,
+        phone,
+        bloodGroup,
+        registeredAt: new Date(),
+      });
+  
+      await newRegistration.save(); // Save registration to database
+  
+      // Respond with success message
+      res.json({
+        status: "Success",
+        message: "Successfully registered for the camp",
+      });
+    } catch (err) {
+      console.error("Error registering for camp:", err);
+      res.json({ status: "Error", message: "Failed to register for the camp" });
+    }
+  });
+  
+// Fetch all camps with full details
+app.get('/camps', async (req, res) => {
+    console.log('Fetching camps...');
+    try {
+      const camps = await Camp.find({}, '-__v');
+      console.log('Camps fetched:', camps);
+      res.json(camps);
+    } catch (err) {
+      console.error('Error fetching camps:', err);
+      res.status(500).json({ message: 'Failed to fetch camps' });
+    }
+  });
+  
+// Fetch all camp registrations with full details for admin
+app.get("/admin/camp-registrations", async (req, res) => {
+    console.log("Fetching all camp registrations...");
+
+    try {
+        // Fetch registrations and populate camp details
+        const registrations = await CampRegistration.find({})
+            .populate({
+                path: 'campId',
+                select: 'name location date',
+                strictPopulate: false, // Avoid errors if campId is missing
+            })
+            .select('-__v');
+
+        // Filter out invalid or incomplete records
+        const validRegistrations = registrations.filter(reg => reg.campId?.location);
+
+        // Sort by camp location in ascending order
+        validRegistrations.sort((a, b) =>
+            a.campId.location.localeCompare(b.campId.location)
+        );
+
+        if (validRegistrations.length === 0) {
+            console.warn("No valid registrations available.");
+            return res.status(404).json({ status: "Error", message: "No registrations available" });
+        }
+
+        console.log(`Fetched ${validRegistrations.length} registrations`);
+        res.status(200).json({ status: "Success", data: validRegistrations });
+    } catch (err) {
+        console.error("Error fetching registrations:", err.message);
+        res.status(500).json({ status: "Error", message: err.message || "Failed to fetch registrations" });
+    }
+});
+
+//donation reminder
+app.get('/api/donation-requests', async (req, res) => {
+    try {
+        const donationRequests = await donationRequestModel.find()
+            .select('userId fullname requestedDate status location BloodGroup Amount');
+
+        // Format data to extract date, month, year and future date
+        const formattedRequests = donationRequests.map(request => {
+            const requestDate = new Date(request.requestedDate);
+            
+            // Add 90 days to the requested date
+            const futureDate = new Date(requestDate);
+            futureDate.setDate(futureDate.getDate() + 90);
+
+            return {
+                userId: request.userId,
+                fullname: request.fullname,
+                date: requestDate.getDate(), // Extract day of the month
+                month: requestDate.toLocaleString('default', { month: 'long' }), // Full month name
+                year: requestDate.getFullYear(), // Year
+                futureDate: futureDate.toLocaleDateString(), // Format future date
+                status: request.status,
+                location: request.location,
+                BloodGroup: request.BloodGroup,
+                Amount: request.Amount
+            };
+        });
+
+        res.status(200).json(formattedRequests);
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to fetch donation requests', error: error.message });
+    }
+});
+  
+//mail to donors
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: 'line30356@gmail.com', // 
+        pass: 'tedq pxms pecj ocbr' // 
+    }
+});
+
+// ✅ Endpoint to send reminder email after 90 days
+app.post('/sendReminder', async (req, res) => {
+    const { fullname, lastDonationDate,email } = req.body;
+    if (!fullname || !lastDonationDate) {
+        return res.status(400).json({ status: 'error', message: 'Missing required fields' });
+    }
+
+    // ✅ Calculate next eligible date (after 90 days)
+    const lastDate = new Date(lastDonationDate);
+    const nextDonationDate = new Date(lastDate.setDate(lastDate.getDate() + 90)).toISOString().split('T')[0];
+
+    const mailOptions = {
+        from: 'line30356@gmail.com', // ✅ Sent from admin email
+        to: email,
+        subject: 'You are eligible to donate blood again!',
+        html: `
+            <h2>Blood Donation Eligibility Reminder</h2>
+            <p>Dear <strong>${fullname}</strong>,</p>
+            <p>We are happy to inform you that you are eligible to donate blood again on:</p>
+            <ul>
+                <li><strong>Date:</strong> ${nextDonationDate}</li>
+            </ul>
+            <p>Your previous donation has helped save lives. We hope to see you again soon!</p>
+            <p>Thank you for your valuable contribution!</p>
+            <br>
+            <p>Regards,<br><strong>Blood Donation Team</strong></p>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        res.status(200).json({ status: 'success', message: `Reminder sent to ${email}` });
+    } catch (error) {
+        console.error('Error sending email:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+//emergency req mail
+// ✅ Endpoint to send emergency request email to multiple donors
+app.post('/sendEmergencyRequest', async (req, res) => {
+    const { bloodType, recipients } = req.body;
+
+    if (!bloodType || !recipients || !recipients.length) {
+        return res.status(400).json({ status: 'error', message: 'Missing required fields or recipients list is empty' });
+    }
+
+    // ✅ Email content
+    const mailOptions = {
+        from: 'line30356@gmail.com', 
+        to: recipients.join(','), // Convert array to comma-separated string
+        subject: `Urgent Need for ${bloodType} Blood`,
+        html: `
+            <h2>Emergency Blood Donation Request</h2>
+            <p>Dear Donors and Consumers,</p>
+            <p>We urgently require <strong>${bloodType}</strong> blood to save a life. If you are eligible and willing to donate, please contact us immediately.</p>
+            <p>Your contribution can save lives!</p>
+            <br>
+            <p>Thank you for your support!</p>
+            <br>
+            <p>Regards,<br><strong>Blood Donation Team</strong></p>
+        `
+    };
+
+    try {
+        await transporter.sendMail(mailOptions);
+        res.status(200).json({ status: 'success', message: `Emergency request sent to ${recipients.length} recipients` });
+    } catch (error) {
+        console.error('Error sending email:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+
+
+// Get all donor and consumer emails
+app.get('/getAllEmails', async (req, res) => {
+    try {
+        // ✅ Fetch donor emails
+        const donorEmails = await donarloginModel.find({}, 'email');
+        // ✅ Fetch consumer emails
+        const consumerEmails = await consumerloginModel.find({}, 'email');
+
+        // ✅ Combine emails into one list
+        const allEmails = [
+            ...donorEmails.map(donor => donor.email),
+            ...consumerEmails.map(consumer => consumer.email)
+        ];
+
+        res.status(200).json({ success: true, emails: allEmails });
+    } catch (error) {
+        console.error('Error fetching emails:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch emails' });
+    }
+});
+
 app.listen(8080,()=>{
     console.log("server started...")
 })
+

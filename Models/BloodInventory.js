@@ -3,17 +3,22 @@ const mongoose = require("mongoose");
 const bloodInventorySchema = new mongoose.Schema({
     requestId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: "DonationRequest"
+        refPath: "requestType" // Dynamic reference to either consumer or hospital request
+    },
+    requestType: {
+        type: String,
+        enum: ["ConsumerRequest", "HospitalRequest"], // Identify request source
+        required: false
     },
     Amount: { 
         type: Number, 
-        default: 0,
-        required: true // Ensure that an amount is provided
+        required: true, 
+        default: 0
     },
     BloodGroup: {
         type: String,
-        required: true, // Ensure that blood group is provided
-        enum: ["A+","A-","B+","B-","AB+","AB-","O+","O-"] // Define allowed blood groups
+        required: true,
+        enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]
     }
 });
 

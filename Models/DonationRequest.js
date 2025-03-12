@@ -9,6 +9,10 @@ const donationRequestSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    email: {
+        type: String,
+        required: true
+    },
     requestedDate: {
         type: Date,
         required: true
