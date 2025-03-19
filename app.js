@@ -1330,13 +1330,18 @@ app.post('/sendEmergencyRequest', async (req, res) => {
 });
 
 
-// Get all donor and consumer emails
 app.get('/getAllEmails', async (req, res) => {
     try {
-        // ✅ Fetch donor emails
-        const donorEmails = await donarloginModel.find({}, 'email');
-        // ✅ Fetch consumer emails
-        const consumerEmails = await consumerloginModel.find({}, 'email');
+        const { location } = req.query;
+
+        if (!location) {
+            return res.status(400).json({ success: false, message: 'Location is required' });
+        }
+
+        // ✅ Fetch donor emails based on location
+        const donorEmails = await donarloginModel.find({ location }, 'email');
+        // ✅ Fetch consumer emails based on location
+        const consumerEmails = await consumerloginModel.find({ location }, 'email');
 
         // ✅ Combine emails into one list
         const allEmails = [
@@ -1348,6 +1353,58 @@ app.get('/getAllEmails', async (req, res) => {
     } catch (error) {
         console.error('Error fetching emails:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch emails' });
+    }
+});
+// ✅ Get all unique locations from donors and consumers
+app.get('/getAllLocations', async (req, res) => {
+    try {
+        const donorLocations = await donarloginModel.distinct('location');
+        const consumerLocations = await consumerloginModel.distinct('location');
+
+        // ✅ Combine and remove duplicates
+        const allLocations = [...new Set([...donorLocations, ...consumerLocations])];
+
+        res.status(200).json({ success: true, locations: allLocations });
+    } catch (error) {
+        console.error('Error fetching locations:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch locations' });
+    }
+});
+
+// ✅ API to send "Request Closed" email
+app.post('/sendRequestClosedEmail', async (req, res) => {
+    const { recipients } = req.body;
+
+    if (!recipients || recipients.length === 0) {
+        return res.status(400).json({ success: false, message: 'No recipients provided' });
+    }
+
+    const subject = 'Emergency Request Closed - Thank You!';
+    const message = `
+        <p>Dear Donor,</p>
+        <p>We are pleased to inform you that the emergency request has been successfully fulfilled.</p>
+        <p>Thank you for your prompt response and for saving a life! Your contribution is invaluable.</p>
+        <p>Stay safe and healthy!</p>
+        <br>
+        <p>Best regards,<br><strong>Blood Donation App Team</strong></p>
+    `;
+
+    try {
+        for (const recipient of recipients) {
+            // ✅ Send email
+            await transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: recipient,
+                subject,
+                html: message
+            });
+        }
+
+        console.log(`✅ "Request Closed" emails sent to ${recipients.length} users.`);
+        res.status(200).json({ success: true, message: `Emails sent to ${recipients.length} users.` });
+    } catch (error) {
+        console.error('Error sending emails:', error);
+        res.status(500).json({ success: false, message: 'Failed to send emails' });
     }
 });
 
